@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>𝐂𝐚𝐦𝐨𝐫𝐚 | تسجيل الدخول</title>
+    <style>
+        body {
+            background-color: #1e1f22;
+            color: #ffffff;
+            font-family: Tahoma, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background-color: #2b2d31;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            border: 1px solid #35363c;
+            width: 350px;
+        }
+        h1 { margin-bottom: 10px; font-size: 24px; }
+        p { color: #949ba4; font-size: 14px; margin-bottom: 30px; }
+        .btn {
+            background-color: #5865F2;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            transition: background 0.2s;
+        }
+        .btn:hover { background-color: #4752C4; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🎛️ 𝐂𝐚𝐦𝐨𝐫𝐚</h1>
+        <p>لوحة التحكم الاحترافية لإدارة البوت بكل فخامة.</p>
+        
+        <!-- التعديل الجذري هنا: حطينا رابط ديسكورد المباشر مع الصلاحيات (identify + guilds) -->
+        <a href="https://discord.com/oauth2/authorize?client_id=1547633056322429109&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fauth%2Fdiscord%2Fcallback&scope=identify+guilds" class="btn">تسجيل الدخول بواسطة Discord 🚀</a>
+        
+    </div>
+</body>
+</html>
