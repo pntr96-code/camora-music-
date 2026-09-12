@@ -572,7 +572,7 @@ async function processAndPlay(guild, songData) {
             await sendControlPanel(serverQueue.textChannel, serverQueue);
         }
 
-    } async (err) => {
+    } catch (err) {
         console.error('Download/Playback Error:', err);
         serverQueue.songs.shift();
         if (serverQueue.songs.length > 0 && serverQueue.songs[0]) {
