@@ -1,0 +1,16 @@
+{
+  "name": "camora-music-bots",
+  "version": "1.0.0",
+  "description": "5 Multi-instance Discord Music Bots",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.16.1",
+    "discord.js": "^14.14.1",
+    "ffmpeg-static": "^5.2.0",
+    "play-dl": "^1.9.7",
+    "youtube-dl-exec": "^2.4.7"
+  }
+}
