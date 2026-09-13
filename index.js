@@ -40,7 +40,7 @@ function createWelcomePanel() {
     const embed = new EmbedBuilder()
         .setColor('#2b2d31')
         .setTitle('🎵 Camora Music - لوحة التحكم')
-        .setDescription('**فقط الصق رابط يوتيوب في الشات وسيقوم البوت بالتشغيل تلقائياً!**')
+        .setDescription('**أرسل رابط يوتيوب مباشرة أو استخدم الأمر `!play` وسيشتغل المقطع تلقائياً!**')
         .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
@@ -197,8 +197,17 @@ client.on('messageCreate', async message => {
         return message.channel.send(createWelcomePanel());
     }
 
-    // التحقق المباشر من روابط يوتيوب
-    const content = message.content.trim();
+    let content = message.content.trim();
+    
+    // إزالة كلمات مثل !play أو !p أو ! لو وجدت في بداية الرسالة لاستخراج الرابط نظيفاً
+    if (content.startsWith('!play')) {
+        content = content.replace('!play', '').trim();
+    } else if (content.startsWith('!p')) {
+        content = content.replace('!p', '').trim();
+    } else if (content.startsWith('!')) {
+        content = content.replace('!', '').trim();
+    }
+
     if (!content.includes('http://') && !content.includes('https://')) return;
 
     let serverQueue = queue.get(message.guildId);
@@ -255,7 +264,7 @@ client.on('interactionCreate', async interaction => {
         let serverQueue = queue.get(guildId);
 
         if (interaction.isButton() && interaction.customId === 'start_listening') {
-            return interaction.reply({ content: '💡 فقط أرسل رابط يوتيوب مباشرة في الشات وسيقوم البوت بتشغيله!', ephemeral: true });
+            return interaction.reply({ content: '💡 أرسل رابط يوتيوب مباشرة أو مع !play وسيعمل البوت فوراً!', ephemeral: true });
         }
 
         if (!serverQueue) return;
