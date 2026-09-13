@@ -24,17 +24,14 @@ const play = require('play-dl');
 const path = require('path');
 const fs = require('fs');
 
-const tokensEnv = process.env.BOT_TOKENS || '';
-const TOKENS = tokensEnv.split(',').map(t => t.trim()).filter(Boolean);
-
-// 📌 الرومات الخمسة بترتيبها الصحيح 100% لكل بوت
-const FIXED_CHANNELS = {
-    0: '1518935693240565820', // Bot 1 -> روم 1
-    1: '1548657289529917621', // Bot 2 -> روم 2
-    2: '1548657305011224618', // Bot 3 -> روم 3
-    3: '1548657322279051444', // Bot 4 -> روم 4
-    4: '1548657355867037726'  // Bot 5 -> روم 5
-};
+// 📌 ربط كل بوت بمتغير البيئة الخاص به وبدقة متكاملة مع رومه الصوتي
+const BOTS_CONFIG = [
+    { token: process.env.TOKEN_1, channelId: '1518935693240565820', name: 'Camora Music 1' },
+    { token: process.env.TOKEN_2, channelId: '1548657289529917621', name: 'Camora Music 2' },
+    { token: process.env.TOKEN_3, channelId: '1548657305011224618', name: 'Camora Music 3' },
+    { token: process.env.TOKEN_4, channelId: '1548657322279051444', name: 'Camora Music 4' },
+    { token: process.env.TOKEN_5, channelId: '1548657355867037726', name: 'Camora Music 5' }
+];
 
 const downloadsDir = path.join(__dirname, 'downloads');
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
@@ -74,11 +71,11 @@ function createMusicPanel(songTitle, loopStatus, volumeStatus) {
     return { embeds: [embed], components: [row1, row2] };
 }
 
-// إطلاق كل بوت بشكل منفصل تماماً لتجنب أي تداخل في المتغيرات
-TOKENS.forEach((token, index) => {
-    if (!token) return;
-    const botNumber = index + 1;
-    const targetChannelId = FIXED_CHANNELS[index];
+BOTS_CONFIG.forEach((bot, index) => {
+    if (!bot.token) {
+        console.log(`⚠️ Token for ${bot.name} is missing in environment variables!`);
+        return;
+    }
 
     const client = new Client({
         intents: [
@@ -92,10 +89,10 @@ TOKENS.forEach((token, index) => {
     const queue = new Map();
 
     client.once('ready', async () => {
-        console.log(`🤖 Bot #${botNumber} is online: ${client.user.tag}`);
+        console.log(`🤖 [${bot.name}] is online: ${client.user.tag}`);
 
         client.guilds.cache.forEach(guild => {
-            const voiceChannel = guild.channels.cache.get(targetChannelId);
+            const voiceChannel = guild.channels.cache.get(bot.channelId);
             if (voiceChannel && voiceChannel.type === ChannelType.GuildVoice) {
                 try {
                     const connection = joinVoiceChannel({
@@ -120,12 +117,12 @@ TOKENS.forEach((token, index) => {
                         currentFile: null,
                         lastPanel: null
                     });
-                    console.log(`✅ [Bot #${botNumber}] Successfully joined fixed room: ${voiceChannel.name} (ID: ${targetChannelId})`);
+                    console.log(`✅ [${bot.name}] Locked into room: ${voiceChannel.name} (ID: ${bot.channelId})`);
                 } catch (err) {
-                    console.error(`❌ [Bot #${botNumber}] Failed to join room:`, err);
+                    console.error(`❌ [${bot.name}] Failed to join room:`, err);
                 }
             } else {
-                console.log(`⚠️ [Bot #${botNumber}] Target room ID (${targetChannelId}) not found in server (${guild.name})!`);
+                console.log(`⚠️ [${bot.name}] Room ID (${bot.channelId}) not found in server (${guild.name})!`);
             }
         });
     });
@@ -136,7 +133,7 @@ TOKENS.forEach((token, index) => {
             let serverQueue = queue.get(guildId);
 
             if (!serverQueue) {
-                const voiceChannel = interaction.guild.channels.cache.get(targetChannelId);
+                const voiceChannel = interaction.guild.channels.cache.get(bot.channelId);
                 if (voiceChannel) {
                     const connection = joinVoiceChannel({
                         channelId: voiceChannel.id,
@@ -166,7 +163,7 @@ TOKENS.forEach((token, index) => {
             if (interaction.isButton()) {
                 const action = interaction.customId;
                 if (!serverQueue || serverQueue.songs.length === 0) {
-                    return interaction.reply({ content: '❌ لا يوجد مقطع يعمل حالياً لهذا البوت!', ephemeral: true });
+                    return interaction.reply({ content: '❌ لا يوجد مقطع يعمل حالياً!', ephemeral: true });
                 }
 
                 if (action === 'music_pause') {
@@ -216,5 +213,5 @@ TOKENS.forEach((token, index) => {
         } catch (err) {}
     });
 
-    client.login(token);
+    client.login(bot.token);
 });
