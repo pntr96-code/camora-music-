@@ -29,7 +29,7 @@ function createWelcomePanel() {
     const embed = new EmbedBuilder()
         .setColor('#2b2d31')
         .setTitle('🎵 Camora Music - لوحة التحكم')
-        .setDescription('**أرسل رابط يوتيوب مباشرة في الشات أو استخدم الأمر `!play` وسيشتغل المقطع فوراً!**')
+        .setDescription('**أرسل رابط يوتيوب مباشرة في الشات وسيعمل المقطع فوراً!**')
         .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
@@ -207,17 +207,9 @@ client.on('messageCreate', async message => {
     const msg = await message.channel.send('⏳ جاري جلب المقطع...');
 
     try {
-        let songInfo;
-        if (content.startsWith('http')) {
-            songInfo = await play.video_info(content);
-        } else {
-            const searched = await play.search(content, { limit: 1 });
-            if (!searched || searched.length === 0) return msg.edit('❌ لم يتم العثور على نتائج.');
-            songInfo = await play.video_info(searched[0].url);
-        }
-
+        const songInfo = await play.video_info(content);
         const title = songInfo.video_details.title;
-        const targetUrl = songInfo.video_details.url;
+        const targetUrl = content;
 
         if (serverQueue.songs.length === 0) {
             serverQueue.songs.push({ title, url: targetUrl });
@@ -238,7 +230,7 @@ client.on('interactionCreate', async interaction => {
         let serverQueue = queue.get(guildId);
 
         if (interaction.isButton() && interaction.customId === 'start_listening') {
-            return interaction.reply({ content: '💡 أرسل رابط يوتيوب مباشرة في الشات وسيقوم البوت بتشغيله فوراً!', ephemeral: true });
+            return interaction.reply({ content: '💡 أرسل رابط يوتيوب مباشرة في الشات وسيعمل البوت فوراً!', ephemeral: true });
         }
 
         if (!serverQueue) return;
