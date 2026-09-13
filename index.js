@@ -19,11 +19,23 @@ const {
 } = require('discord.js');
 
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
-const ytdl = require('@distube/ytdl-core');
+const youtubedl = require('youtube-dl-exec');
+const play = require('play-dl');
+const path = require('path');
+const fs = require('fs');
 
 const BOT_TOKEN = process.env.TOKEN_1;
 const TARGET_CHANNEL = '1518935693240565820';
 const BOT_NAME = 'Camora Music';
+
+const downloadsDir = path.join(__dirname, 'downloads');
+if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
+
+function cleanupFile(filePath) {
+    if (filePath && fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) {}
+    }
+}
 
 function createWelcomePanel() {
     const embed = new EmbedBuilder()
@@ -105,6 +117,7 @@ client.once('ready', async () => {
                     songs: [],
                     loop: false,
                     volume: 1,
+                    currentFile: null,
                     lastPanel: null
                 });
                 console.log(`✅ Locked into room: ${voiceChannel.name}`);
@@ -119,14 +132,35 @@ async function playSong(guild, song) {
         if (serverQueue?.lastPanel) {
             try { await serverQueue.lastPanel.delete(); } catch (e) {}
         }
+        cleanupFile(serverQueue?.currentFile);
+        serverQueue.currentFile = null;
         serverQueue.lastPanel = null;
         return;
     }
 
+    cleanupFile(serverQueue.currentFile);
+
     try {
-        const stream = ytdl(song.url, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1 << 25 });
-        const resource = createAudioResource(stream, { inlineVolume: true });
-        
+        const filePath = path.join(downloadsDir, `audio_${Date.now()}.mp3`);
+        serverQueue.currentFile = filePath;
+
+        // تحميل الصوت مباشرة كملف MP3 لتجاوز الحظر السحابي
+        await youtubedl(song.url, {
+            extractAudio: true,
+            audioFormat: 'mp3',
+            o: filePath,
+            noCheckCertificates: true,
+            noWarnings: true,
+            preferFreeFormats: true,
+            addHeader: ['referer:https://www.youtube.com', 'user-agent:Mozilla/5.0'],
+            ffmpegLocation: ffmpegPath
+        });
+
+        if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
+            throw new Error('Downloaded file is empty');
+        }
+
+        const resource = createAudioResource(filePath, { inlineVolume: true });
         resource.volume.setVolume(serverQueue.volume);
         serverQueue.player.play(resource);
 
@@ -142,6 +176,9 @@ async function playSong(guild, song) {
         }
 
         serverQueue.player.once(AudioPlayerStatus.Idle, () => {
+            cleanupFile(filePath);
+            serverQueue.currentFile = null;
+            
             if (serverQueue.loop) {
                 playSong(guild, serverQueue.songs[0]);
             } else {
@@ -151,6 +188,8 @@ async function playSong(guild, song) {
         });
 
     } catch (err) {
+        cleanupFile(serverQueue.currentFile);
+        serverQueue.currentFile = null;
         serverQueue.songs.shift();
         if (serverQueue.songs.length > 0) playSong(guild, serverQueue.songs[0]);
     }
@@ -181,7 +220,7 @@ client.on('messageCreate', async message => {
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: message.guildId,
-                adapterCreator: message.guild.voiceAdapterCreator,
+                adapterCreator: guild.voiceAdapterCreator,
                 selfDeaf: true
             });
             const player = createAudioPlayer();
@@ -194,6 +233,7 @@ client.on('messageCreate', async message => {
                 songs: [],
                 loop: false,
                 volume: 1,
+                currentFile: null,
                 lastPanel: null
             };
             queue.set(message.guildId, serverQueue);
@@ -201,23 +241,25 @@ client.on('messageCreate', async message => {
     }
 
     serverQueue.textChannel = message.channel;
-    const msg = await message.channel.send('⏳ جاري جلب المقطع...');
+    const msg = await message.channel.send('⏳ جاري تحميل وجلب المقطع...');
 
     try {
-        const songInfo = await ytdl.getInfo(content);
-        const title = songInfo.videoDetails.title;
-        const targetUrl = content;
+        let title = content;
+        try {
+            const info = await youtubedl(content, { dumpSingleJson: true, noCheckCertificates: true });
+            title = info.title || content;
+        } catch (e) {}
 
         if (serverQueue.songs.length === 0) {
-            serverQueue.songs.push({ title, url: targetUrl });
+            serverQueue.songs.push({ title, url: content });
             await msg.edit(`✅ جاري تشغيل: **${title}**`);
             playSong(message.guild, serverQueue.songs[0]);
         } else {
-            serverQueue.songs.push({ title, url: targetUrl });
+            serverQueue.songs.push({ title, url: content });
             await msg.edit(`✅ تمت الإضافة لقائمة الانتظار: **${title}**`);
         }
     } catch (e) {
-        await msg.edit('❌ حدث خطأ أثناء جلب الرابط.');
+        await msg.edit('❌ حدث خطأ أثناء تحميل الرابط.');
     }
 });
 
@@ -227,7 +269,7 @@ client.on('interactionCreate', async interaction => {
         let serverQueue = queue.get(guildId);
 
         if (interaction.isButton() && interaction.customId === 'start_listening') {
-            return interaction.reply({ content: '💡 أرسل رابط يوتيوب مباشرة في الشات وسيعمل البوت فوراً!', ephemeral: true });
+            return interaction.reply({ content: '💡 أرسل رابط يوتيوب مباشرة في الشات وسيبدأ البوت بالتشغيل!', ephemeral: true });
         }
 
         if (!serverQueue) return;
@@ -251,6 +293,7 @@ client.on('interactionCreate', async interaction => {
                 serverQueue.player.stop();
                 return interaction.reply({ content: '⏭️ تم تخطي المقطع.', ephemeral: true });
             }
+            if, action === 'music_loop') { // تم التصحيح
             if (action === 'music_loop') {
                 serverQueue.loop = !serverQueue.loop;
                 return interaction.reply({ content: serverQueue.loop ? '🔁 تم تفعيل التكرار.' : '🔁 تم إيقاف التكرار.', ephemeral: true });
@@ -277,6 +320,8 @@ client.on('interactionCreate', async interaction => {
                 }
                 serverQueue.songs = [];
                 serverQueue.player.stop();
+                cleanupFile(serverQueue.currentFile);
+                serverQueue.currentFile = null;
                 serverQueue.lastPanel = null;
                 return interaction.reply({ content: '⏹️ تم إيقاف التشغيل.', ephemeral: true });
             }
