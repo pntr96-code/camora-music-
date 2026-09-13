@@ -144,7 +144,6 @@ async function playSong(guild, song) {
         const filePath = path.join(downloadsDir, `audio_${Date.now()}.mp3`);
         serverQueue.currentFile = filePath;
 
-        // تحميل الصوت مباشرة كملف MP3 لتجاوز الحظر السحابي
         await youtubedl(song.url, {
             extractAudio: true,
             audioFormat: 'mp3',
@@ -293,7 +292,6 @@ client.on('interactionCreate', async interaction => {
                 serverQueue.player.stop();
                 return interaction.reply({ content: '⏭️ تم تخطي المقطع.', ephemeral: true });
             }
-            if, action === 'music_loop') { // تم التصحيح
             if (action === 'music_loop') {
                 serverQueue.loop = !serverQueue.loop;
                 return interaction.reply({ content: serverQueue.loop ? '🔁 تم تفعيل التكرار.' : '🔁 تم إيقاف التكرار.', ephemeral: true });
