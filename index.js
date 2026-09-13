@@ -201,17 +201,11 @@ async function playSong(guild, song) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    if (message.content === '!panel') {
+    if (message.content.trim() === '!panel') {
         return message.channel.send(createWelcomePanel());
     }
     
     let query = message.content.trim();
-    if (query.startsWith('!play')) {
-        query = query.replace('!play', '').trim();
-    } else if (!query.startsWith('http')) {
-        return; 
-    }
-
     if (!query) return;
 
     let serverQueue = queue.get(message.guildId);
