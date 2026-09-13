@@ -19,28 +19,17 @@ const {
 } = require('discord.js');
 
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
-const youtubedl = require('youtube-dl-exec');
-const path = require('path');
-const fs = require('fs');
+const play = require('play-dl');
 
 const BOT_TOKEN = process.env.TOKEN_1;
 const TARGET_CHANNEL = '1518935693240565820';
 const BOT_NAME = 'Camora Music';
 
-const downloadsDir = path.join(__dirname, 'downloads');
-if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
-
-function cleanupFile(filePath) {
-    if (filePath && fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (e) {}
-    }
-}
-
 function createWelcomePanel() {
     const embed = new EmbedBuilder()
         .setColor('#2b2d31')
         .setTitle('🎵 Camora Music - لوحة التحكم')
-        .setDescription('**أرسل رابط يوتيوب مباشرة أو استخدم الأمر `!play` وسيشتغل المقطع تلقائياً!**')
+        .setDescription('**أرسل رابط يوتيوب مباشرة في الشات أو استخدم الأمر `!play` وسيشتغل المقطع فوراً!**')
         .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
@@ -116,7 +105,6 @@ client.once('ready', async () => {
                     songs: [],
                     loop: false,
                     volume: 1,
-                    currentFile: null,
                     lastPanel: null
                 });
                 console.log(`✅ Locked into room: ${voiceChannel.name}`);
@@ -131,31 +119,17 @@ async function playSong(guild, song) {
         if (serverQueue?.lastPanel) {
             try { await serverQueue.lastPanel.delete(); } catch (e) {}
         }
-        cleanupFile(serverQueue?.currentFile);
-        serverQueue.currentFile = null;
         serverQueue.lastPanel = null;
         return;
     }
 
-    cleanupFile(serverQueue.currentFile);
-
     try {
-        const filePath = path.join(downloadsDir, `music_${Date.now()}.mp3`);
-        serverQueue.currentFile = filePath;
-        
-        await youtubedl(song.url, {
-            extractAudio: true,
-            audioFormat: 'mp3',
-            o: filePath,
-            noCheckCertificates: true,
-            ffmpegLocation: ffmpegPath
+        const stream = await play.stream(song.url);
+        const resource = createAudioResource(stream.stream, { 
+            inputType: stream.type, 
+            inlineVolume: true 
         });
-
-        if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
-            throw new Error('Audio file is empty');
-        }
-
-        const resource = createAudioResource(filePath, { inlineVolume: true });
+        
         resource.volume.setVolume(serverQueue.volume);
         serverQueue.player.play(resource);
 
@@ -171,9 +145,6 @@ async function playSong(guild, song) {
         }
 
         serverQueue.player.once(AudioPlayerStatus.Idle, () => {
-            cleanupFile(filePath);
-            serverQueue.currentFile = null;
-            
             if (serverQueue.loop) {
                 playSong(guild, serverQueue.songs[0]);
             } else {
@@ -183,8 +154,6 @@ async function playSong(guild, song) {
         });
 
     } catch (err) {
-        cleanupFile(serverQueue.currentFile);
-        serverQueue.currentFile = null;
         serverQueue.songs.shift();
         if (serverQueue.songs.length > 0) playSong(guild, serverQueue.songs[0]);
     }
@@ -198,8 +167,6 @@ client.on('messageCreate', async message => {
     }
 
     let content = message.content.trim();
-    
-    // إزالة كلمات مثل !play أو !p أو ! لو وجدت في بداية الرسالة لاستخراج الرابط نظيفاً
     if (content.startsWith('!play')) {
         content = content.replace('!play', '').trim();
     } else if (content.startsWith('!p')) {
@@ -230,7 +197,6 @@ client.on('messageCreate', async message => {
                 songs: [],
                 loop: false,
                 volume: 1,
-                currentFile: null,
                 lastPanel: null
             };
             queue.set(message.guildId, serverQueue);
@@ -241,9 +207,17 @@ client.on('messageCreate', async message => {
     const msg = await message.channel.send('⏳ جاري جلب المقطع...');
 
     try {
-        const info = await youtubedl(content, { dumpSingleJson: true, noCheckCertificates: true });
-        const title = info.title || content;
-        const targetUrl = content;
+        let songInfo;
+        if (content.startsWith('http')) {
+            songInfo = await play.video_info(content);
+        } else {
+            const searched = await play.search(content, { limit: 1 });
+            if (!searched || searched.length === 0) return msg.edit('❌ لم يتم العثور على نتائج.');
+            songInfo = await play.video_info(searched[0].url);
+        }
+
+        const title = songInfo.video_details.title;
+        const targetUrl = songInfo.video_details.url;
 
         if (serverQueue.songs.length === 0) {
             serverQueue.songs.push({ title, url: targetUrl });
@@ -264,7 +238,7 @@ client.on('interactionCreate', async interaction => {
         let serverQueue = queue.get(guildId);
 
         if (interaction.isButton() && interaction.customId === 'start_listening') {
-            return interaction.reply({ content: '💡 أرسل رابط يوتيوب مباشرة أو مع !play وسيعمل البوت فوراً!', ephemeral: true });
+            return interaction.reply({ content: '💡 أرسل رابط يوتيوب مباشرة في الشات وسيقوم البوت بتشغيله فوراً!', ephemeral: true });
         }
 
         if (!serverQueue) return;
@@ -314,8 +288,6 @@ client.on('interactionCreate', async interaction => {
                 }
                 serverQueue.songs = [];
                 serverQueue.player.stop();
-                cleanupFile(serverQueue.currentFile);
-                serverQueue.currentFile = null;
                 serverQueue.lastPanel = null;
                 return interaction.reply({ content: '⏹️ تم إيقاف التشغيل.', ephemeral: true });
             }
