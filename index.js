@@ -20,7 +20,6 @@ const {
 
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
 const youtubedl = require('youtube-dl-exec');
-const play = require('play-dl');
 const path = require('path');
 const fs = require('fs');
 
@@ -41,13 +40,12 @@ function createWelcomePanel() {
     const embed = new EmbedBuilder()
         .setColor('#2b2d31')
         .setTitle('🎵 Camora Music - لوحة التحكم')
-        .setDescription('**اكتب اسم أو رابط الأغنية في الشات للاستماع، أو اضغط على أزرار المنصات أدناه:**')
+        .setDescription('**فقط الصق رابط يوتيوب في الشات وسيقوم البوت بالتشغيل تلقائياً!**')
         .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('start_listening').setLabel('البدء بالاستماع').setStyle(ButtonStyle.Success).setEmoji('▶️'),
-        new ButtonBuilder().setLabel('YouTube').setStyle(ButtonStyle.Link).setUrl('https://www.youtube.com').setEmoji('🔴'),
-        new ButtonBuilder().setLabel('Spotify').setStyle(ButtonStyle.Link).setUrl('https://www.spotify.com').setEmoji('🟢')
+        new ButtonBuilder().setLabel('YouTube').setStyle(ButtonStyle.Link).setUrl('https://www.youtube.com').setEmoji('🔴')
     );
 
     return { embeds: [embed], components: [row] };
@@ -80,10 +78,6 @@ function createMusicPanel(songTitle, loopStatus, volumeStatus) {
     );
 
     return { embeds: [embed], components: [row1, row2] };
-}
-
-if (!BOT_TOKEN) {
-    console.error('❌ TOKEN_1 is missing in environment variables!');
 }
 
 const client = new Client({
@@ -126,9 +120,7 @@ client.once('ready', async () => {
                     lastPanel: null
                 });
                 console.log(`✅ Locked into room: ${voiceChannel.name}`);
-            } catch (err) {
-                console.error('❌ Error joining voice channel:', err);
-            }
+            } catch (err) {}
         }
     });
 });
@@ -204,9 +196,10 @@ client.on('messageCreate', async message => {
     if (message.content.trim() === '!panel') {
         return message.channel.send(createWelcomePanel());
     }
-    
-    let query = message.content.trim();
-    if (!query) return;
+
+    // التحقق المباشر من روابط يوتيوب
+    const content = message.content.trim();
+    if (!content.includes('http://') && !content.includes('https://')) return;
 
     let serverQueue = queue.get(message.guildId);
     if (!serverQueue) {
@@ -239,19 +232,9 @@ client.on('messageCreate', async message => {
     const msg = await message.channel.send('⏳ جاري جلب المقطع...');
 
     try {
-        let targetUrl, title;
-        if (query.startsWith('http')) {
-            targetUrl = query;
-            try {
-                const info = await youtubedl(query, { dumpSingleJson: true, noCheckCertificates: true });
-                title = info.title || query;
-            } catch (e) { title = query; }
-        } else {
-            const results = await play.search(query, { limit: 1 });
-            if (!results || !results.length) return msg.edit('❌ لم يتم العثور على نتائج.');
-            targetUrl = results[0].url;
-            title = results[0].title;
-        }
+        const info = await youtubedl(content, { dumpSingleJson: true, noCheckCertificates: true });
+        const title = info.title || content;
+        const targetUrl = content;
 
         if (serverQueue.songs.length === 0) {
             serverQueue.songs.push({ title, url: targetUrl });
@@ -262,7 +245,7 @@ client.on('messageCreate', async message => {
             await msg.edit(`✅ تمت الإضافة لقائمة الانتظار: **${title}**`);
         }
     } catch (e) {
-        await msg.edit('❌ حدث خطأ أثناء تشغيل المقطع.');
+        await msg.edit('❌ حدث خطأ أثناء جلب الرابط.');
     }
 });
 
@@ -272,7 +255,7 @@ client.on('interactionCreate', async interaction => {
         let serverQueue = queue.get(guildId);
 
         if (interaction.isButton() && interaction.customId === 'start_listening') {
-            return interaction.reply({ content: '💡 أرسل رابط يوتيوب أو اسم الأغنية مباشرة في الشات وسيقوم البوت بتشغيلها!', ephemeral: true });
+            return interaction.reply({ content: '💡 فقط أرسل رابط يوتيوب مباشرة في الشات وسيقوم البوت بتشغيله!', ephemeral: true });
         }
 
         if (!serverQueue) return;
