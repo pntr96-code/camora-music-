@@ -91,7 +91,8 @@ client.once('ready', async () => {
                     channelId: voiceChannel.id,
                     guildId: guild.id,
                     adapterCreator: guild.voiceAdapterCreator,
-                    selfDeaf: true 
+                    selfDeaf: true,
+                    group: client.user.id
                 });
 
                 const player = createAudioPlayer();
@@ -185,7 +186,8 @@ client.on('messageCreate', async message => {
                 channelId: voiceChannel.id,
                 guildId: message.guildId,
                 adapterCreator: message.guild.voiceAdapterCreator,
-                selfDeaf: true
+                selfDeaf: true,
+                group: client.user.id
             });
             const player = createAudioPlayer();
             connection.subscribe(player);
