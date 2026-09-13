@@ -14,15 +14,11 @@ process.on('uncaughtException', (err) => {
 const { 
     Client, 
     GatewayIntentBits, 
-    REST, 
-    Routes, 
-    SlashCommandBuilder, 
     EmbedBuilder, 
     ActionRowBuilder, 
     ButtonBuilder, 
     ButtonStyle,
     AttachmentBuilder,
-    ActivityType,
     ChannelType
 } = require('discord.js');
 
@@ -40,7 +36,7 @@ if (TOKENS.length === 0) {
     process.exit(1);
 }
 
-// 📌 الرومات الثابتة لكل بوت (البوت الأول يرتبط بالروم الأول، وهكذا)
+// 📌 الرومات الثابتة لكل بوت بالترتيب
 const FIXED_CHANNELS = [
     '1518935693240565820', // بوت 1
     '1548657289529917621', // بوت 2
@@ -52,23 +48,42 @@ const FIXED_CHANNELS = [
 const downloadsDir = path.join(__dirname, 'downloads');
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
 
-const favoritesFile = path.join(__dirname, 'favorites.json');
-let userFavorites = {};
-if (fs.existsSync(favoritesFile)) {
-    try { userFavorites = JSON.parse(fs.readFileSync(favoritesFile, 'utf8')); } catch (e) {}
-}
-
-function saveFavorites() {
-    try { fs.writeFileSync(favoritesFile, JSON.stringify(userFavorites, null, 2)); } catch (e) {}
-}
-
 function cleanupFile(filePath) {
     if (filePath && fs.existsSync(filePath)) {
         try { fs.unlinkSync(filePath); } catch (e) {}
     }
 }
 
-// تشغيل كل بوت على حِدة وبشكل مستقل تماماً عن البقية
+function createMusicPanel(songTitle, loopStatus, volumeStatus) {
+    const volPercent = Math.round(volumeStatus * 100);
+
+    const embed = new EmbedBuilder()
+        .setColor('#2b2d31')
+        .setTitle('🎛️ Camora Music Studio')
+        .setDescription('استخدم الأزرار أدناه للتحكم بالتشغيل والصوت.')
+        .addFields(
+            { name: '🎵 المقطع الحالي', value: `\`${songTitle}\``, inline: false },
+            { name: '🔁 التكرار', value: loopStatus ? '`مفعل`' : '`معطل`', inline: true },
+            { name: '🔊 الصوت', value: `\`${volPercent}%\``, inline: true }
+        )
+        .setTimestamp();
+
+    const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_pause').setLabel('إيقاف مؤقت').setStyle(ButtonStyle.Primary).setEmoji('⏸️'),
+        new ButtonBuilder().setCustomId('music_resume').setLabel('استئناف').setStyle(ButtonStyle.Success).setEmoji('▶️'),
+        new ButtonBuilder().setCustomId('music_skip').setLabel('تخطي').setStyle(ButtonStyle.Secondary).setEmoji('⏭️')
+    );
+
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_loop').setLabel('تكرار').setStyle(ButtonStyle.Primary).setEmoji('🔁'),
+        new ButtonBuilder().setCustomId('music_voldown').setLabel('خفاض صوت').setStyle(ButtonStyle.Secondary).setEmoji('🔉'),
+        new ButtonBuilder().setCustomId('music_volup').setLabel('رفع صوت').setStyle(ButtonStyle.Secondary).setEmoji('🔊'),
+        new ButtonBuilder().setCustomId('music_stop').setLabel('إيقاف نهائي').setStyle(ButtonStyle.Danger).setEmoji('⏹️')
+    );
+
+    return { embeds: [embed], components: [row1, row2] };
+}
+
 TOKENS.forEach((token, index) => {
     const botNumber = index + 1;
     const fixedChannelId = FIXED_CHANNELS[index];
@@ -84,27 +99,10 @@ TOKENS.forEach((token, index) => {
 
     const queue = new Map();
 
-    // تخصيص أوامر سلاش فريدة لكل بوت لكي لا تتداخل أبداً (مثلاً play1, play2...)
-    const slashCommands = [
-        new SlashCommandBuilder()
-            .setName(`play${botNumber}`)
-            .setDescription(`🎵 Play a song on Bot #${botNumber}`)
-            .addStringOption(opt => opt.setName('query').setDescription('YouTube link or song name').setRequired(true)),
-        new SlashCommandBuilder().setName(`skip${botNumber}`).setDescription(`⏭️ Skip song on Bot #${botNumber}`),
-        new SlashCommandBuilder().setName(`stop${botNumber}`).setDescription(`⏹️ Stop music on Bot #${botNumber}`),
-        new SlashCommandBuilder().setName(`queue${botNumber}`).setDescription(`📋 Show queue for Bot #${botNumber}`),
-        new SlashCommandBuilder().setName(`favorites${botNumber}`).setDescription(`⭐ Show favorites`)
-    ].map(cmd => cmd.toJSON());
-
-    const rest = new REST({ version: '10' }).setToken(token);
-
     client.once('ready', async () => {
         console.log(`🤖 Bot #${botNumber} is online: ${client.user.tag}`);
-        try {
-            await rest.put(Routes.applicationCommands(client.user.id), { body: slashCommands });
-        } catch (e) {}
 
-        // الدخول الثابت الفوري للروم المخصص لهذا البوت فقط
+        // الدخول الفوري والثابت للروم الصوتي فور تشغيل البوت
         client.guilds.cache.forEach(guild => {
             const voiceChannel = guild.channels.cache.get(fixedChannelId);
             if (voiceChannel && voiceChannel.type === ChannelType.GuildVoice) {
@@ -127,10 +125,10 @@ TOKENS.forEach((token, index) => {
                         history: [],
                         loop: false,
                         volume: 1,
-                        filter: 'normal',
                         currentFile: null,
                         lastPanel: null
                     });
+                    console.log(`🔗 Bot #${botNumber} joined room in guild: ${guild.name}`);
                 } catch (err) {}
             }
         });
@@ -139,8 +137,12 @@ TOKENS.forEach((token, index) => {
     async function playSong(guild, song) {
         const serverQueue = queue.get(guild.id);
         if (!song) {
+            if (serverQueue?.lastPanel) {
+                try { await serverQueue.lastPanel.delete(); } catch (e) {}
+            }
             cleanupFile(serverQueue?.currentFile);
             serverQueue.currentFile = null;
+            serverQueue.lastPanel = null;
             return;
         }
 
@@ -166,11 +168,27 @@ TOKENS.forEach((token, index) => {
             resource.volume.setVolume(serverQueue.volume);
             serverQueue.player.play(resource);
 
+            const panelData = createMusicPanel(song.title, serverQueue.loop, serverQueue.volume);
+            if (serverQueue.textChannel) {
+                if (serverQueue.lastPanel) {
+                    try { await serverQueue.lastPanel.edit(panelData); } catch (e) {
+                        serverQueue.lastPanel = await serverQueue.textChannel.send(panelData);
+                    }
+                } else {
+                    serverQueue.lastPanel = await serverQueue.textChannel.send(panelData);
+                }
+            }
+
             serverQueue.player.once(AudioPlayerStatus.Idle, () => {
                 cleanupFile(filePath);
                 serverQueue.currentFile = null;
-                serverQueue.songs.shift();
-                playSong(guild, serverQueue.songs[0]);
+                
+                if (serverQueue.loop) {
+                    playSong(guild, serverQueue.songs[0]);
+                } else {
+                    serverQueue.songs.shift();
+                    playSong(guild, serverQueue.songs[0]);
+                }
             });
 
         } catch (err) {
@@ -182,86 +200,96 @@ TOKENS.forEach((token, index) => {
     }
 
     client.on('interactionCreate', async interaction => {
-        if (!interaction.isChatInputCommand()) return;
-        const guildId = interaction.guildId;
-        let serverQueue = queue.get(guildId);
+        try {
+            const guildId = interaction.guildId;
+            let serverQueue = queue.get(guildId);
 
-        // تجهيز الاتصال تلقائياً لو لم يكن موجوداً بالسيرفر
-        if (!serverQueue) {
-            const voiceChannel = interaction.guild.channels.cache.get(fixedChannelId);
-            if (voiceChannel) {
-                const connection = joinVoiceChannel({
-                    channelId: voiceChannel.id,
-                    guildId,
-                    adapterCreator: interaction.guild.voiceAdapterCreator
-                });
-                const player = createAudioPlayer();
-                connection.subscribe(player);
-                serverQueue = {
-                    textChannel: interaction.channel,
-                    voiceChannel,
-                    connection,
-                    player,
-                    songs: [],
-                    history: [],
-                    loop: false,
-                    volume: 1,
-                    filter: 'normal',
-                    currentFile: null,
-                    lastPanel: null
-                };
-                queue.set(guildId, serverQueue);
-            } else {
-                return interaction.reply({ content: `❌ Fixed voice channel for Bot #${botNumber} not found!`, ephemeral: true });
-            }
-        }
-
-        const { commandName } = interaction;
-
-        if (commandName === `play${botNumber}`) {
-            const query = interaction.options.getString('query');
-            await interaction.deferReply({ ephemeral: true });
-
-            let targetUrl, title;
-            try {
-                if (query.startsWith('http')) {
-                    targetUrl = query;
-                    try {
-                        const info = await youtubedl(query, { dumpSingleJson: true, noCheckCertificates: true });
-                        title = info.title || query;
-                    } catch (e) { title = query; }
-                } else {
-                    const results = await play.search(query, { limit: 1 });
-                    if (!results || !results.length) return interaction.editReply('❌ No results found.');
-                    targetUrl = results[0].url;
-                    title = results[0].title;
+            if (!serverQueue) {
+                const voiceChannel = interaction.guild.channels.cache.get(fixedChannelId);
+                if (voiceChannel) {
+                    const connection = joinVoiceChannel({
+                        channelId: voiceChannel.id,
+                        guildId,
+                        adapterCreator: interaction.guild.voiceAdapterCreator
+                    });
+                    const player = createAudioPlayer();
+                    connection.subscribe(player);
+                    serverQueue = {
+                        textChannel: interaction.channel,
+                        voiceChannel,
+                        connection,
+                        player,
+                        songs: [],
+                        history: [],
+                        loop: false,
+                        volume: 1,
+                        currentFile: null,
+                        lastPanel: null
+                    };
+                    queue.set(guildId, serverQueue);
                 }
-            } catch (e) {
-                return interaction.editReply('❌ Failed to fetch link.');
             }
 
-            if (serverQueue.songs.length === 0) {
-                serverQueue.songs.push({ title, url: targetUrl });
-                await interaction.editReply(`✅ Bot #${botNumber} playing: **${title}**`);
-                playSong(interaction.guild, serverQueue.songs[0]);
-            } else {
-                serverQueue.songs.push({ title, url: targetUrl });
-                await interaction.editReply(`✅ Bot #${botNumber} added to queue: **${title}**`);
+            serverQueue.textChannel = interaction.channel;
+
+            // أزرار لوحة التحكم
+            if (interaction.isButton()) {
+                const action = interaction.customId;
+                if (!serverQueue || serverQueue.songs.length === 0) {
+                    return interaction.reply({ content: '❌ لا يوجد مقطع يعمل حالياً!', ephemeral: true });
+                }
+
+                if (action === 'music_pause') {
+                    serverQueue.player.pause();
+                    return interaction.reply({ content: '⏸️ تم إيقاف المقطع مؤقتاً.', ephemeral: true });
+                }
+                if (action === 'music_resume') {
+                    serverQueue.player.unpause();
+                    return interaction.reply({ content: '▶️ تم استئناف التشغيل.', ephemeral: true });
+                }
+                if (action === 'music_skip') {
+                    serverQueue.player.stop();
+                    return interaction.reply({ content: '⏭️ تم تخطي المقطع.', ephemeral: true });
+                }
+                if (action === 'music_loop') {
+                    serverQueue.loop = !serverQueue.loop;
+                    if (serverQueue.lastPanel) {
+                        try {
+                            const updatedPanel = createMusicPanel(serverQueue.songs[0]?.title || 'Unknown', serverQueue.loop, serverQueue.volume);
+                            await serverQueue.lastPanel.edit(updatedPanel);
+                        } catch (e) {}
+                    }
+                    return interaction.reply({ content: serverQueue.loop ? '🔁 تم تفعيل التكرار.' : '🔁 تم إيقاف التكرار.', ephemeral: true });
+                }
+                if (action === 'music_voldown') {
+                    serverQueue.volume = Math.max(0.1, Number((serverQueue.volume - 0.2).toFixed(1)));
+                    try {
+                        const res = serverQueue.player.state.resource;
+                        if (res && res.volume) res.volume.setVolume(serverQueue.volume);
+                    } catch (e) {}
+                    return interaction.reply({ content: `🔉 تم خفض الصوت إلى ${Math.round(serverQueue.volume * 100)}%`, ephemeral: true });
+                }
+                if (action === 'music_volup') {
+                    serverQueue.volume = Math.min(2, Number((serverQueue.volume + 0.2).toFixed(1)));
+                    try {
+                        const res = serverQueue.player.state.resource;
+                        if (res && res.volume) res.volume.setVolume(serverQueue.volume);
+                    } catch (e) {}
+                    return interaction.reply({ content: `🔊 تم رفع الصوت إلى ${Math.round(serverQueue.volume * 100)}%`, ephemeral: true });
+                }
+                if (action === 'music_stop') {
+                    if (serverQueue.lastPanel) {
+                        try { await serverQueue.lastPanel.delete(); } catch (e) {}
+                    }
+                    serverQueue.songs = [];
+                    serverQueue.player.stop();
+                    cleanupFile(serverQueue.currentFile);
+                    serverQueue.currentFile = null;
+                    serverQueue.lastPanel = null;
+                    return interaction.reply({ content: '⏹️ تم إيقاف التشغيل وتفريغ القائمة (البوت باقي في الروم الثابت).', ephemeral: true });
+                }
             }
-        }
-
-        if (commandName === `skip${botNumber}`) {
-            if (serverQueue.songs.length === 0) return interaction.reply({ content: '❌ Nothing playing!', ephemeral: true });
-            serverQueue.player.stop();
-            return interaction.reply({ content: `⏭️ Bot #${botNumber} track skipped.`, ephemeral: true });
-        }
-
-        if (commandName === `stop${botNumber}`) {
-            serverQueue.songs = [];
-            serverQueue.player.stop();
-            cleanupFile(serverQueue.currentFile);
-            return interaction.reply({ content: `⏹️ Bot #${botNumber} stopped (remains in voice channel).`, ephemeral: true });
-        }
+        } catch (err) {}
     });
 
     client.login(token);
