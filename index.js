@@ -219,7 +219,7 @@ client.on('messageCreate', async message => {
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: message.guildId,
-                adapterCreator: guild.voiceAdapterCreator,
+                adapterCreator: message.guild.voiceAdapterCreator,
                 selfDeaf: true
             });
             const player = createAudioPlayer();
