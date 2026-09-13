@@ -27,14 +27,14 @@ const fs = require('fs');
 const tokensEnv = process.env.BOT_TOKENS || '';
 const TOKENS = tokensEnv.split(',').map(t => t.trim()).filter(Boolean);
 
-// 📌 ايديوهات الرومات الصوتية الخمسة بالترتيب الصحيح لكل بوت
-const FIXED_CHANNELS = [
-    '1518935693240565820', // Bot 1
-    '1548657289529917621', // Bot 2
-    '1548657305011224618', // Bot 3
-    '1548657322279051444', // Bot 4
-    '1548657355867037726'  // Bot 5
-];
+// 📌 الرومات الخمسة بترتيبها الصحيح 100% لكل بوت
+const FIXED_CHANNELS = {
+    0: '1518935693240565820', // Bot 1 -> روم 1
+    1: '1548657289529917621', // Bot 2 -> روم 2
+    2: '1548657305011224618', // Bot 3 -> روم 3
+    3: '1548657322279051444', // Bot 4 -> روم 4
+    4: '1548657355867037726'  // Bot 5 -> روم 5
+};
 
 const downloadsDir = path.join(__dirname, 'downloads');
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
@@ -74,9 +74,11 @@ function createMusicPanel(songTitle, loopStatus, volumeStatus) {
     return { embeds: [embed], components: [row1, row2] };
 }
 
+// إطلاق كل بوت بشكل منفصل تماماً لتجنب أي تداخل في المتغيرات
 TOKENS.forEach((token, index) => {
+    if (!token) return;
     const botNumber = index + 1;
-    const fixedChannelId = FIXED_CHANNELS[index];
+    const targetChannelId = FIXED_CHANNELS[index];
 
     const client = new Client({
         intents: [
@@ -93,7 +95,7 @@ TOKENS.forEach((token, index) => {
         console.log(`🤖 Bot #${botNumber} is online: ${client.user.tag}`);
 
         client.guilds.cache.forEach(guild => {
-            const voiceChannel = guild.channels.cache.get(fixedChannelId);
+            const voiceChannel = guild.channels.cache.get(targetChannelId);
             if (voiceChannel && voiceChannel.type === ChannelType.GuildVoice) {
                 try {
                     const connection = joinVoiceChannel({
@@ -118,14 +120,100 @@ TOKENS.forEach((token, index) => {
                         currentFile: null,
                         lastPanel: null
                     });
-                    console.log(`✅ Bot #${botNumber} joined room: ${voiceChannel.name} in (${guild.name})`);
+                    console.log(`✅ [Bot #${botNumber}] Successfully joined fixed room: ${voiceChannel.name} (ID: ${targetChannelId})`);
                 } catch (err) {
-                    console.error(`❌ Bot #${botNumber} failed to join room:`, err);
+                    console.error(`❌ [Bot #${botNumber}] Failed to join room:`, err);
                 }
             } else {
-                console.log(`⚠️ Bot #${botNumber} channel ID (${fixedChannelId}) not found in guild (${guild.name})`);
+                console.log(`⚠️ [Bot #${botNumber}] Target room ID (${targetChannelId}) not found in server (${guild.name})!`);
             }
         });
+    });
+
+    client.on('interactionCreate', async interaction => {
+        try {
+            const guildId = interaction.guildId;
+            let serverQueue = queue.get(guildId);
+
+            if (!serverQueue) {
+                const voiceChannel = interaction.guild.channels.cache.get(targetChannelId);
+                if (voiceChannel) {
+                    const connection = joinVoiceChannel({
+                        channelId: voiceChannel.id,
+                        guildId,
+                        adapterCreator: interaction.guild.voiceAdapterCreator
+                    });
+                    const player = createAudioPlayer();
+                    connection.subscribe(player);
+                    serverQueue = {
+                        textChannel: interaction.channel,
+                        voiceChannel,
+                        connection,
+                        player,
+                        songs: [],
+                        history: [],
+                        loop: false,
+                        volume: 1,
+                        currentFile: null,
+                        lastPanel: null
+                    };
+                    queue.set(guildId, serverQueue);
+                }
+            }
+
+            serverQueue.textChannel = interaction.channel;
+
+            if (interaction.isButton()) {
+                const action = interaction.customId;
+                if (!serverQueue || serverQueue.songs.length === 0) {
+                    return interaction.reply({ content: '❌ لا يوجد مقطع يعمل حالياً لهذا البوت!', ephemeral: true });
+                }
+
+                if (action === 'music_pause') {
+                    serverQueue.player.pause();
+                    return interaction.reply({ content: '⏸️ تم إيقاف المقطع مؤقتاً.', ephemeral: true });
+                }
+                if (action === 'music_resume') {
+                    serverQueue.player.unpause();
+                    return interaction.reply({ content: '▶️ تم استئناف التشغيل.', ephemeral: true });
+                }
+                if (action === 'music_skip') {
+                    serverQueue.player.stop();
+                    return interaction.reply({ content: '⏭️ تم تخطي المقطع.', ephemeral: true });
+                }
+                if (action === 'music_loop') {
+                    serverQueue.loop = !serverQueue.loop;
+                    return interaction.reply({ content: serverQueue.loop ? '🔁 تم تفعيل التكرار.' : '🔁 تم إيقاف التكرار.', ephemeral: true });
+                }
+                if (action === 'music_voldown') {
+                    serverQueue.volume = Math.max(0.1, Number((serverQueue.volume - 0.2).toFixed(1)));
+                    try {
+                        const res = serverQueue.player.state.resource;
+                        if (res && res.volume) res.volume.setVolume(serverQueue.volume);
+                    } catch (e) {}
+                    return interaction.reply({ content: `🔉 تم خفض الصوت إلى ${Math.round(serverQueue.volume * 100)}%`, ephemeral: true });
+                }
+                if (action === 'music_volup') {
+                    serverQueue.volume = Math.min(2, Number((serverQueue.volume + 0.2).toFixed(1)));
+                    try {
+                        const res = serverQueue.player.state.resource;
+                        if (res && res.volume) res.volume.setVolume(serverQueue.volume);
+                    } catch (e) {}
+                    return interaction.reply({ content: `🔊 تم رفع الصوت إلى ${Math.round(serverQueue.volume * 100)}%`, ephemeral: true });
+                }
+                if (action === 'music_stop') {
+                    if (serverQueue.lastPanel) {
+                        try { await serverQueue.lastPanel.delete(); } catch (e) {}
+                    }
+                    serverQueue.songs = [];
+                    serverQueue.player.stop();
+                    cleanupFile(serverQueue.currentFile);
+                    serverQueue.currentFile = null;
+                    serverQueue.lastPanel = null;
+                    return interaction.reply({ content: '⏹️ تم إيقاف التشغيل.', ephemeral: true });
+                }
+            }
+        } catch (err) {}
     });
 
     client.login(token);
