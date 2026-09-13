@@ -33,6 +33,23 @@ function cleanupFile(filePath) {
     }
 }
 
+// 🎛️ واجهة رسالة الترحيب والبدء (تشبه الصورة التي أرسلتها)
+function createWelcomePanel(botName) {
+    const embed = new EmbedBuilder()
+        .setColor('#2b2d31')
+        .setTitle(`🎵 ${botName} - لوحة التحكم`)
+        .setDescription('**اكتب اسم أو رابط الأغنية في الشات للاستماع، أو اضغط على أزرار المنصات أدناه:**')
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('start_listening').setLabel('البدء بالاستماع').setStyle(ButtonStyle.Success).setEmoji('▶️'),
+        new ButtonBuilder().setLabel('YouTube').setStyle(ButtonStyle.Link).setUrl('https://www.youtube.com').setEmoji('🔴'),
+        newButtonBuilder().setLabel('Spotify').setStyle(ButtonStyle.Link).setUrl('https://www.spotify.com').setEmoji('🟢')
+    );
+
+    return { embeds: [embed], components: [row] };
+}
+
 function createMusicPanel(songTitle, loopStatus, volumeStatus) {
     const volPercent = Math.round(volumeStatus * 100);
     const embed = new EmbedBuilder()
@@ -63,10 +80,7 @@ function createMusicPanel(songTitle, loopStatus, volumeStatus) {
 }
 
 function launchBot(token, targetChannelId, botName) {
-    if (!token) {
-        console.log(`⚠️ Token for ${botName} is missing!`);
-        return;
-    }
+    if (!token) return;
 
     const client = new Client({
         intents: [
@@ -82,7 +96,7 @@ function launchBot(token, targetChannelId, botName) {
     client.once('ready', async () => {
         console.log(`🤖 [${botName}] is online: ${client.user.tag}`);
 
-        client.guilds.cache.forEach(guild => {
+        client.guilds.cache.forEach(async guild => {
             const voiceChannel = guild.channels.cache.get(targetChannelId);
             if (voiceChannel && voiceChannel.type === ChannelType.GuildVoice) {
                 try {
@@ -90,7 +104,7 @@ function launchBot(token, targetChannelId, botName) {
                         channelId: voiceChannel.id,
                         guildId: guild.id,
                         adapterCreator: guild.voiceAdapterCreator,
-                        selfDeaf: false
+                        selfDeaf: true 
                     });
 
                     const player = createAudioPlayer();
@@ -107,10 +121,7 @@ function launchBot(token, targetChannelId, botName) {
                         currentFile: null,
                         lastPanel: null
                     });
-                    console.log(`✅ [${botName}] Locked into room ID: ${targetChannelId}`);
-                } catch (err) {
-                    console.error(`❌ [${botName}] Error joining room:`, err);
-                }
+                } catch (err) {}
             }
         });
     });
@@ -183,66 +194,70 @@ function launchBot(token, targetChannelId, botName) {
     client.on('messageCreate', async message => {
         if (message.author.bot || !message.guild) return;
         
-        // أمر التشغيل النصي
-        if (message.content.startsWith('!play')) {
-            const args = message.content.split(' ').slice(1).join(' ');
-            if (!args) return message.reply('❌ الرجاء كتابة رابط يوتيوب أو اسم الأغنية بعد الأمر!');
+        let query = message.content.trim();
+        if (query.startsWith('!play')) {
+            query = query.replace('!play', '').trim();
+        } else if (!query.startsWith('http')) {
+            return; // يقبل الروابط مباشرة بدون أوامر معقدة
+        }
 
-            let serverQueue = queue.get(message.guildId);
-            if (!serverQueue) {
-                const voiceChannel = message.guild.channels.cache.get(targetChannelId);
-                if (voiceChannel) {
-                    const connection = joinVoiceChannel({
-                        channelId: voiceChannel.id,
-                        guildId: message.guildId,
-                        adapterCreator: message.guild.voiceAdapterCreator
-                    });
-                    const player = createAudioPlayer();
-                    connection.subscribe(player);
-                    serverQueue = {
-                        textChannel: message.channel,
-                        voiceChannel,
-                        connection,
-                        player,
-                        songs: [],
-                        loop: false,
-                        volume: 1,
-                        currentFile: null,
-                        lastPanel: null
-                    };
-                    queue.set(message.guildId, serverQueue);
-                }
+        if (!query) return;
+
+        let serverQueue = queue.get(message.guildId);
+        if (!serverQueue) {
+            const voiceChannel = message.guild.channels.cache.get(targetChannelId);
+            if (voiceChannel) {
+                const connection = joinVoiceChannel({
+                    channelId: voiceChannel.id,
+                    guildId: message.guildId,
+                    adapterCreator: message.guild.voiceAdapterCreator,
+                    selfDeaf: true
+                });
+                const player = createAudioPlayer();
+                connection.subscribe(player);
+                serverQueue = {
+                    textChannel: message.channel,
+                    voiceChannel,
+                    connection,
+                    player,
+                    songs: [],
+                    loop: false,
+                    volume: 1,
+                    currentFile: null,
+                    lastPanel: null
+                };
+                queue.set(message.guildId, serverQueue);
+            }
+        }
+
+        serverQueue.textChannel = message.channel;
+        const msg = await message.channel.send('⏳ جاري جلب المقطع...');
+
+        try {
+            let targetUrl, title;
+            if (query.startsWith('http')) {
+                targetUrl = query;
+                try {
+                    const info = await youtubedl(query, { dumpSingleJson: true, noCheckCertificates: true });
+                    title = info.title || query;
+                } catch (e) { title = query; }
+            } else {
+                const results = await play.search(query, { limit: 1 });
+                if (!results || !results.length) return msg.edit('❌ لم يتم العثور على نتائج.');
+                targetUrl = results[0].url;
+                title = results[0].title;
             }
 
-            serverQueue.textChannel = message.channel;
-            const msg = await message.channel.send('⏳ جاري جلب المقطع...');
-
-            try {
-                let targetUrl, title;
-                if (args.startsWith('http')) {
-                    targetUrl = args;
-                    try {
-                        const info = await youtubedl(args, { dumpSingleJson: true, noCheckCertificates: true });
-                        title = info.title || args;
-                    } catch (e) { title = args; }
-                } else {
-                    const results = await play.search(args, { limit: 1 });
-                    if (!results || !results.length) return msg.edit('❌ لم يتم العثور على نتائج.');
-                    targetUrl = results[0].url;
-                    title = results[0].title;
-                }
-
-                if (serverQueue.songs.length === 0) {
-                    serverQueue.songs.push({ title, url: targetUrl });
-                    await msg.edit(`✅ **[${botName}]** جاري تشغيل: **${title}**`);
-                    playSong(message.guild, serverQueue.songs[0]);
-                } else {
-                    serverQueue.songs.push({ title, url: targetUrl });
-                    await msg.edit(`✅ **[${botName}]** تمت الإضافه لقائمة الانتظار: **${title}**`);
-                }
-            } catch (e) {
-                await msg.edit('❌ حدث خطأ أثناء جلب الرابط.');
+            if (serverQueue.songs.length === 0) {
+                serverQueue.songs.push({ title, url: targetUrl });
+                await msg.edit(`✅ **[${botName}]** جاري تشغيل: **${title}**`);
+                playSong(message.guild, serverQueue.songs[0]);
+            } else {
+                serverQueue.songs.push({ title, url: targetUrl });
+                await msg.edit(`✅ **[${botName}]** تمت الإضافة لقائمة الانتظار: **${title}**`);
             }
+        } catch (e) {
+            await msg.edit('❌ حدث خطأ أثناء تشغيل المقطع.');
         }
     });
 
@@ -250,8 +265,12 @@ function launchBot(token, targetChannelId, botName) {
         try {
             const guildId = interaction.guildId;
             let serverQueue = queue.get(guildId);
-            if (!serverQueue) return;
 
+            if (interaction.isButton() && interaction.customId === 'start_listening') {
+                return interaction.reply({ content: '💡 أرسل رابط يوتيوب أو اسم الأغنية مباشرة في الشات وسيقوم البوت بتشغيلها!', ephemeral: true });
+            }
+
+            if (!serverQueue) return;
             serverQueue.textChannel = interaction.channel;
 
             if (interaction.isButton()) {
@@ -307,9 +326,17 @@ function launchBot(token, targetChannelId, botName) {
         } catch (err) {}
     });
 
-    client.login(token).catch(e => console.error(`❌ Failed to login ${botName}:`, e.message));
+    client.login(token).catch(e => {});
+
+    // أول ما يكتب البوت رسالة أو يفتح، إذا تبي يرسل لوحة الترحيب بأي شات يكتب فيه أول مرة:
+    client.on('messageCreate', async message => {
+        if (message.author.bot || !message.guild) return;
+        if (message.content === '!panel' || message.content === '!setup') {
+            await message.channel.send(createWelcomePanel(botName));
+        }
+    });
 }
 
-// تشغيل البوتين بالترتيب
+// تشغيل البوتين بالترتيب ومكتومي الصوت
 launchBot(process.env.TOKEN_1, '1518935693240565820', 'Camora Music 1');
 launchBot(process.env.TOKEN_2, '1548657289529917621', 'Camora Music 2');
