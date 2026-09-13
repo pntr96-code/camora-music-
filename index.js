@@ -19,7 +19,7 @@ const {
 } = require('discord.js');
 
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
-const play = require('play-dl');
+const ytdl = require('@distube/ytdl-core');
 
 const BOT_TOKEN = process.env.TOKEN_1;
 const TARGET_CHANNEL = '1518935693240565820';
@@ -91,8 +91,7 @@ client.once('ready', async () => {
                     channelId: voiceChannel.id,
                     guildId: guild.id,
                     adapterCreator: guild.voiceAdapterCreator,
-                    selfDeaf: true,
-                    group: client.user.id
+                    selfDeaf: true
                 });
 
                 const player = createAudioPlayer();
@@ -125,11 +124,8 @@ async function playSong(guild, song) {
     }
 
     try {
-        const stream = await play.stream(song.url);
-        const resource = createAudioResource(stream.stream, { 
-            inputType: stream.type, 
-            inlineVolume: true 
-        });
+        const stream = ytdl(song.url, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1 << 25 });
+        const resource = createAudioResource(stream, { inlineVolume: true });
         
         resource.volume.setVolume(serverQueue.volume);
         serverQueue.player.play(resource);
@@ -186,8 +182,7 @@ client.on('messageCreate', async message => {
                 channelId: voiceChannel.id,
                 guildId: message.guildId,
                 adapterCreator: message.guild.voiceAdapterCreator,
-                selfDeaf: true,
-                group: client.user.id
+                selfDeaf: true
             });
             const player = createAudioPlayer();
             connection.subscribe(player);
@@ -209,8 +204,8 @@ client.on('messageCreate', async message => {
     const msg = await message.channel.send('⏳ جاري جلب المقطع...');
 
     try {
-        const songInfo = await play.video_info(content);
-        const title = songInfo.video_details.title;
+        const songInfo = await ytdl.getInfo(content);
+        const title = songInfo.videoDetails.title;
         const targetUrl = content;
 
         if (serverQueue.songs.length === 0) {
