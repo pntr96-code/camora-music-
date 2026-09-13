@@ -18,20 +18,9 @@ const {
     ChannelType
 } = require('discord.js');
 
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
-const youtubedl = require('youtube-dl-exec');
-const play = require('play-dl');
+const { joinVoiceChannel, createAudioPlayer } = require('@discordjs/voice');
 const path = require('path');
 const fs = require('fs');
-
-// 📌 الترتيب الصحيح والمطابق تماماً لطلباتك
-const BOTS_CONFIG = [
-    { token: process.env.TOKEN_1, channelId: '1518935693240565820', name: 'Camora Music 1' },
-    { token: process.env.TOKEN_2, channelId: '1548657289529917621', name: 'Camora Music 2' },
-    { token: process.env.TOKEN_3, channelId: '1548657305011224618', name: 'Camora Music 3' },
-    { token: process.env.TOKEN_4, channelId: '1548657322279051444', name: 'Camora Music 4' },
-    { token: process.env.TOKEN_5, channelId: '1548657355867037726', name: 'Camora Music 5' }
-];
 
 const downloadsDir = path.join(__dirname, 'downloads');
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
@@ -71,8 +60,12 @@ function createMusicPanel(songTitle, loopStatus, volumeStatus) {
     return { embeds: [embed], components: [row1, row2] };
 }
 
-BOTS_CONFIG.forEach((bot) => {
-    if (!bot.token) return;
+// دالة تشغيل بوت منفرد بشكل مستقل تماماً
+function launchBot(token, targetChannelId, botName) {
+    if (!token) {
+        console.log(`⚠️ Token for ${botName} is missing!`);
+        return;
+    }
 
     const client = new Client({
         intents: [
@@ -86,10 +79,10 @@ BOTS_CONFIG.forEach((bot) => {
     const queue = new Map();
 
     client.once('ready', async () => {
-        console.log(`🤖 [${bot.name}] is online: ${client.user.tag}`);
+        console.log(`🤖 [${botName}] is online: ${client.user.tag}`);
 
         client.guilds.cache.forEach(guild => {
-            const voiceChannel = guild.channels.cache.get(bot.channelId);
+            const voiceChannel = guild.channels.cache.get(targetChannelId);
             if (voiceChannel && voiceChannel.type === ChannelType.GuildVoice) {
                 try {
                     const connection = joinVoiceChannel({
@@ -114,12 +107,12 @@ BOTS_CONFIG.forEach((bot) => {
                         currentFile: null,
                         lastPanel: null
                     });
-                    console.log(`✅ [${bot.name}] Locked into room: ${voiceChannel.name} (ID: ${bot.channelId})`);
+                    console.log(`✅ [${botName}] Locked into room ID: ${targetChannelId}`);
                 } catch (err) {
-                    console.error(`❌ [${bot.name}] Failed to join room:`, err);
+                    console.error(`❌ [${botName}] Error joining room:`, err);
                 }
             } else {
-                console.log(`⚠️ [${bot.name}] Room ID (${bot.channelId}) not found in server (${guild.name})!`);
+                console.log(`⚠️ [${botName}] Room ID (${targetChannelId}) not found in server!`);
             }
         });
     });
@@ -130,7 +123,7 @@ BOTS_CONFIG.forEach((bot) => {
             let serverQueue = queue.get(guildId);
 
             if (!serverQueue) {
-                const voiceChannel = interaction.guild.channels.cache.get(bot.channelId);
+                const voiceChannel = interaction.guild.channels.cache.get(targetChannelId);
                 if (voiceChannel) {
                     const connection = joinVoiceChannel({
                         channelId: voiceChannel.id,
@@ -210,5 +203,12 @@ BOTS_CONFIG.forEach((bot) => {
         } catch (err) {}
     });
 
-    client.login(bot.token);
-});
+    client.login(token).catch(e => console.error(`❌ Failed to login ${botName}:`, e.message));
+}
+
+// تشغيل البوتات الخمسة بالتسلسل المباشر والصحيح
+launchBot(process.env.TOKEN_1, '1518935693240565820', 'Camora Music 1');
+launchBot(process.env.TOKEN_2, '1548657289529917621', 'Camora Music 2');
+launchBot(process.env.TOKEN_3, '1548657305011224618', 'Camora Music 3');
+launchBot(process.env.TOKEN_4, '1548657322279051444', 'Camora Music 4');
+launchBot(process.env.TOKEN_5, '1548657355867037726', 'Camora Music 5');
