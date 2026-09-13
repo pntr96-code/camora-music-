@@ -1,7 +1,6 @@
 const ffmpegPath = require('ffmpeg-static');
 process.env.FFMPEG_PATH = ffmpegPath;
 
-// منع إغلاق البوت عند حدوث أي خطأ مفاجئ بالشبكة أو ديسكورد
 process.on('unhandledRejection', error => {
     if (error.code === 10062 || error.code === 40060 || error.code === 170020) return;
 });
@@ -14,7 +13,7 @@ const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerSta
 const play = require('play-dl');
 
 const BOT_TOKEN = process.env.TOKEN_1;
-const TARGET_CHANNEL = '1518935693240565820'; // روم البوت الثابت
+const TARGET_CHANNEL = '1518935693240565820';
 
 const client = new Client({
     intents: [
@@ -30,7 +29,6 @@ const queue = new Map();
 client.once('ready', async () => {
     console.log(`🤖 [Camora Music] is online: ${client.user.tag}`);
 
-    // الدخول التلقائي للروم فور إقلاع البوت
     client.guilds.cache.forEach(guild => {
         const voiceChannel = guild.channels.cache.get(TARGET_CHANNEL);
         if (voiceChannel && voiceChannel.type === ChannelType.GuildVoice) {
@@ -52,28 +50,23 @@ client.once('ready', async () => {
                     songs: []
                 });
                 console.log(`✅ Locked into room: ${voiceChannel.name}`);
-            } catch (err) {
-                console.log(`❌ Error joining voice:`, err);
-            }
+            } catch (err) {}
         }
     });
 });
 
 async function playSong(guild, song) {
     const serverQueue = queue.get(guild.id);
-    if (!song) {
-        return;
-    }
+    if (!song || !song.url) return;
 
     try {
-        // جلب البث الصوتي المباشر
         const stream = await play.stream(song.url);
         const resource = createAudioResource(stream.stream, { 
             inputType: stream.type, 
             inlineVolume: true 
         });
         
-        resource.volume.setVolume(1.0); // صوت واضح وقوي
+        resource.volume.setVolume(1.0);
         serverQueue.player.play(resource);
 
         serverQueue.player.once(AudioPlayerStatus.Idle, () => {
@@ -91,17 +84,19 @@ async function playSong(guild, song) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    let content = message.content.trim();
+    const rawContent = message.content.trim();
     
-    // دعم الأوامر المباشرة أو إرسال الرابط بدون أمر
-    if (content.startsWith('!play')) {
-        content = content.replace('!play', '').trim();
-    } else if (content.startsWith('!p')) {
-        content = content.replace('!p', '').trim();
+    // استخراج الرابط بشكل دقيق ودون أخطاء
+    let targetUrl = '';
+    const words = rawContent.split(/\s+/);
+    for (const word of words) {
+        if (word.startsWith('http://') || word.startsWith('https://')) {
+            targetUrl = word;
+            break;
+        }
     }
 
-    // إذا لم يكن رابط يوتيوب، تجاهل الرسالة
-    if (!content.includes('http://') && !content.includes('https://')) return;
+    if (!targetUrl) return;
 
     let serverQueue = queue.get(message.guildId);
     if (!serverQueue) {
@@ -128,9 +123,8 @@ client.on('messageCreate', async message => {
     const msg = await message.channel.send('⏳ جاري جلب وتشغيل المقطع...');
 
     try {
-        const songInfo = await play.video_info(content);
-        const title = songInfo.video_details.title;
-        const targetUrl = content;
+        const songInfo = await play.video_info(targetUrl);
+        const title = songInfo.video_details.title || targetUrl;
 
         serverQueue.songs.push({ title, url: targetUrl });
         
