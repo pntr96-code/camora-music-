@@ -24,7 +24,7 @@ const play = require('play-dl');
 const path = require('path');
 const fs = require('fs');
 
-// 📌 ربط كل بوت بمتغير البيئة الخاص به وبدقة متكاملة مع رومه الصوتي
+// 📌 الترتيب الصحيح والمطابق تماماً لطلباتك
 const BOTS_CONFIG = [
     { token: process.env.TOKEN_1, channelId: '1518935693240565820', name: 'Camora Music 1' },
     { token: process.env.TOKEN_2, channelId: '1548657289529917621', name: 'Camora Music 2' },
@@ -71,11 +71,8 @@ function createMusicPanel(songTitle, loopStatus, volumeStatus) {
     return { embeds: [embed], components: [row1, row2] };
 }
 
-BOTS_CONFIG.forEach((bot, index) => {
-    if (!bot.token) {
-        console.log(`⚠️ Token for ${bot.name} is missing in environment variables!`);
-        return;
-    }
+BOTS_CONFIG.forEach((bot) => {
+    if (!bot.token) return;
 
     const client = new Client({
         intents: [
