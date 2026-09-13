@@ -60,7 +60,7 @@ function createMusicPanel(songTitle, loopStatus, volumeStatus) {
     return { embeds: [embed], components: [row1, row2] };
 }
 
-// دالة تشغيل بوت منفرد بشكل مستقل تماماً
+// دالة تشغيل بوت منفرد وثابت في رومه
 function launchBot(token, targetChannelId, botName) {
     if (!token) {
         console.log(`⚠️ Token for ${botName} is missing!`);
@@ -206,9 +206,6 @@ function launchBot(token, targetChannelId, botName) {
     client.login(token).catch(e => console.error(`❌ Failed to login ${botName}:`, e.message));
 }
 
-// تشغيل البوتات الخمسة بالتسلسل المباشر والصحيح
+// تشغيل البوتين فقط بالترتيب المطلوب
 launchBot(process.env.TOKEN_1, '1518935693240565820', 'Camora Music 1');
 launchBot(process.env.TOKEN_2, '1548657289529917621', 'Camora Music 2');
-launchBot(process.env.TOKEN_3, '1548657305011224618', 'Camora Music 3');
-launchBot(process.env.TOKEN_4, '1548657322279051444', 'Camora Music 4');
-launchBot(process.env.TOKEN_5, '1548657355867037726', 'Camora Music 5');
