@@ -1,9 +1,10 @@
 const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
-const play = require('play-dl'); // بديل أثبت استقراراً على الاستضافات السحابية
+const play = require('play-dl');
 
 const BOT_TOKEN = process.env.TOKEN_1;
 const TARGET_CHANNEL = '1518935693240565820';
+const PREFIX = '!play '; // الأمر المخصص لتشغيل الأغنية
 
 const client = new Client({
     intents: [
@@ -52,7 +53,6 @@ async function playSong(guild, song) {
     if (!song || !song.url) return;
 
     try {
-        // استخدام play-dl لجلب البث الصوتي بدون مشاكل حظر يوتيوب في المستضافات
         let streamData = await play.stream(song.url);
         const resource = createAudioResource(streamData.stream, { 
             inputType: streamData.type,
@@ -78,17 +78,13 @@ async function playSong(guild, song) {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    const rawContent = message.content.trim();
-    let targetUrl = '';
-    const words = rawContent.split(/\s+/);
-    for (const word of words) {
-        if (word.startsWith('http://') || word.startsWith('https://')) {
-            targetUrl = word;
-            break;
-        }
-    }
+    // التحقق مما إذا كانت الرسالة تبدأ بالأمر المحدد
+    if (!message.content.startsWith(PREFIX)) return;
 
-    if (!targetUrl) return;
+    const targetUrl = message.content.slice(PREFIX.length).trim();
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        return message.reply('❌ يرجى كتابة رابط يوتيوب صحيح بعد الأمر.');
+    }
 
     let serverQueue = queue.get(message.guildId);
     if (!serverQueue) {
