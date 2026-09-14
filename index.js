@@ -1,9 +1,6 @@
-const ffmpegPath = require('ffmpeg-static');
-process.env.FFMPEG_PATH = ffmpegPath;
-
 const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
-const ytdl = require('@distube/ytdl-core');
+const play = require('play-dl'); // بديل أثبت استقراراً على الاستضافات السحابية
 
 const BOT_TOKEN = process.env.TOKEN_1;
 const TARGET_CHANNEL = '1518935693240565820';
@@ -55,14 +52,10 @@ async function playSong(guild, song) {
     if (!song || !song.url) return;
 
     try {
-        const stream = ytdl(song.url, { 
-            filter: 'audioonly', 
-            quality: 'highestaudio', 
-            highWaterMark: 1 << 25,
-            dlChunkSize: 0 
-        });
-
-        const resource = createAudioResource(stream, { 
+        // استخدام play-dl لجلب البث الصوتي بدون مشاكل حظر يوتيوب في المستضافات
+        let streamData = await play.stream(song.url);
+        const resource = createAudioResource(streamData.stream, { 
+            inputType: streamData.type,
             inlineVolume: true 
         });
         
@@ -76,7 +69,7 @@ async function playSong(guild, song) {
         });
 
     } catch (err) {
-        console.error('Playback error:', err);
+        console.error('Playback error details:', err);
         serverQueue.songs.shift();
         if (serverQueue.songs.length > 0) playSong(guild, serverQueue.songs[0]);
     }
@@ -122,8 +115,8 @@ client.on('messageCreate', async message => {
     const msg = await message.channel.send('⏳ جاري جلب وتشغيل المقطع...');
 
     try {
-        const songInfo = await ytdl.getInfo(targetUrl);
-        const title = songInfo.videoDetails.title || targetUrl;
+        const videoInfo = await play.video_basic_info(targetUrl);
+        const title = videoInfo.video_details.title || targetUrl;
 
         serverQueue.songs.push({ title, url: targetUrl });
         
@@ -134,7 +127,7 @@ client.on('messageCreate', async message => {
             await msg.edit(`✅ تمت الإضافة لقائمة الانتظار: **${title}**`);
         }
     } catch (e) {
-        console.error(e);
+        console.error('Fetch error details:', e);
         await msg.edit('❌ حدث خطأ أثناء جلب الرابط.');
     }
 });
