@@ -1,13 +1,6 @@
 const ffmpegPath = require('ffmpeg-static');
 process.env.FFMPEG_PATH = ffmpegPath;
 
-process.on('unhandledRejection', error => {
-    if (error.code === 10062 || error.code === 40060 || error.code === 170020) return;
-});
-process.on('uncaughtException', (err) => {
-    if (err.code === 10062 || err.code === 40060 || err.code === 170020) return;
-});
-
 const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
 const ytdl = require('@distube/ytdl-core');
@@ -50,7 +43,9 @@ client.once('ready', async () => {
                     songs: []
                 });
                 console.log(`✅ Locked into room: ${voiceChannel.name}`);
-            } catch (err) {}
+            } catch (err) {
+                console.error('Connection error:', err);
+            }
         }
     });
 });
@@ -60,7 +55,6 @@ async function playSong(guild, song) {
     if (!song || !song.url) return;
 
     try {
-        // تشغيل مباشر ونقي عبر ytdl-core بدون الحاجة لبايثون أو أدوات خارجية
         const stream = ytdl(song.url, { 
             filter: 'audioonly', 
             quality: 'highestaudio', 
@@ -68,10 +62,14 @@ async function playSong(guild, song) {
             dlChunkSize: 0 
         });
 
-        const resource = createAudioResource(stream, { inlineVolume: true });
+        const resource = createAudioResource(stream, { 
+            inlineVolume: true 
+        });
+        
         resource.volume.setVolume(1.0);
         serverQueue.player.play(resource);
 
+        serverQueue.player.removeAllListeners(AudioPlayerStatus.Idle);
         serverQueue.player.once(AudioPlayerStatus.Idle, () => {
             serverQueue.songs.shift();
             playSong(guild, serverQueue.songs[0]);
