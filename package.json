@@ -3,10 +3,15 @@
   "version": "1.0.0",
   "description": "Discord music bot",
   "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "@discordjs/voice": "^0.17.0",
     "discord.js": "^14.14.1",
     "play-dl": "^1.9.7",
-    "opusscript": "^0.1.0"
+    "opusscript": "^0.1.0",
+    "ffmpeg-static": "^5.2.0",
+    "libsodium-wrappers": "^0.7.13"
   }
 }
