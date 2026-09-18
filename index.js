@@ -2,6 +2,19 @@ const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior } = require('@discordjs/voice');
 const play = require('play-dl');
 
+// إعداد الكوكيز لتخطي حظر يوتيوب (Error 429)
+if (process.env.YOUTUBE_COOKIE) {
+    play.setToken({
+        youtube: {
+            cookie: process.env.YOUTUBE_COOKIE
+        }
+    }).then(() => {
+        console.log("🍪 YouTube Cookies Loaded Successfully!");
+    }).catch(err => {
+        console.error("❌ Failed to load YouTube Cookies:", err);
+    });
+}
+
 const BOT_TOKEN = process.env.TOKEN_1; // تأكد إن المتغير في Railway اسمه TOKEN_1
 const TARGET_CHANNEL = '1518935693240565820';
 const PREFIX = '!play ';
@@ -17,7 +30,7 @@ const client = new Client({
 
 const queue = new Map();
 
-// دالة مخصصة لإنشاء اللاعب (Player) وربط الأحداث فيه مرة واحدة
+// دالة مخصصة لإنشاء اللاعب (Player) وربط الأحداث فيه مرة واحدة لتفادي تكرار المقاطع
 function createQueuePlayer(guildId) {
     const player = createAudioPlayer({
         behaviors: { noSubscriber: NoSubscriberBehavior.Play }
